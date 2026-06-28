@@ -1,0 +1,312 @@
+# 小説生成エージェント
+
+## 概要
+
+このプロジェクトでは、あなた（Claude Code）が **編集者** と **執筆者** の両方の役割を担い、章ごとに小説を執筆する。
+
+- 設定ファイルは GitHub リポジトリ `w4serinn/story_writer` に置かれている
+- 完成した章は `story/ch_NN.md` としてリポジトリに push する
+- 章完成後、設定ファイルの更新内容を PR で提案する
+
+## ファイル構成
+
+```
+w4serinn/story_writer/
+├── CLAUDE.md
+├── magic_system.md
+├── sentient_weapon_system.md
+├── geography_and_ruins.md
+├── school_system.md
+├── characters.md                ← キャラ設定（追加されていれば）
+├── output/                      ← 中間ファイル・進捗管理（リポジトリに保存）
+│   ├── story_state.json         ← 章番号・サマリーの永続化
+│   ├── chapter_directions.md    ← ユーザーからの章指示
+│   ├── ch_NN_instructions.md
+│   ├── ch_NN_draft.md
+│   └── ch_NN_review.md
+└── story/
+    └── ch_NN.md                 ← 完成章
+```
+
+`output/` 内のファイルはすべてリポジトリに commit・push して永続化する。
+セッションをまたいでも状態が引き継がれる。
+
+---
+
+## 実行前に必ず確認すること
+
+1. リポジトリの `output/story_state.json` を読む（存在しない場合は第1章）
+2. ユーザーから章の流れの指示を受け取る（チャットで）
+
+---
+
+## フロー（1章ごとに実行）
+
+### Step 1: 最新設定を取得
+
+リポジトリのファイルを直接読み込む（クラウド環境ではリポジトリがカレントディレクトリ）。
+
+読むべきファイル:
+- `magic_system.md` — 魔法体系・戦闘理論
+- `sentient_weapon_system.md` — センティエントウェポンシステム
+- `geography_and_ruins.md` — 地理・遺跡・魔物
+- `school_system.md` — 学園制度
+- `new_character_template.md` — キャラクター設定（追加されていれば）
+- `characters.md` — キャラクター詳細・**口調設定**（追加されていれば）
+
+`characters.md` を読んだら、各キャラクターの「口調・話し方」セクションを必ず把握し、
+執筆中は常に参照できる状態にしておく。
+
+### Step 2: 編集者としてヒアリング → 執筆指示を生成
+
+#### 2-1. ユーザー指示を読んで不足を判断する
+
+`output/chapter_directions.md` のユーザー指示と設定ファイルを照らし合わせ、
+執筆指示を作るために**情報が不足している**と感じたらユーザーに確認する。
+
+ヒアリングが必要なケースの例：
+- 新キャラクターが登場するのに名前・外見・能力が未定
+- 重要な場面があるのに場所の描写情報がない
+- キャラクターの感情・動機が読み取れない
+- 前章との繋がりが不明瞭
+
+ヒアリングの形式（まとめて一度に聞く。何度も往復しない）：
+
+```
+【執筆指示を作成する前に確認させてください】
+
+以下の点が未定のようです。決まっていれば教えてください。
+決まっていない場合はこちらで設定します。
+
+1. 〇〇について: （具体的に何を知りたいか）
+2. 〇〇について: （具体的に何を知りたいか）
+
+（全部お任せの場合は「お任せ」と入力してください）
+```
+
+ユーザーが「お任せ」と答えた場合、または情報が十分な場合はそのまま 2-2 へ進む。
+
+#### 2-2. 執筆指示を生成して保存する
+
+ヒアリング結果と設定ファイルをもとに、
+以下の形式で執筆指示を `output/ch_NN_instructions.md` に保存する：
+
+```markdown
+# 第N章 執筆指示
+
+## この章で起きること（必須イベント）
+...
+
+## 登場人物の感情・変化
+...
+
+## 章末の状態（次章への橋渡し）
+...
+
+## 文体・トーンの指示
+...
+
+## 設定との整合性チェックポイント
+...
+```
+
+### Step 3: 執筆者として草稿を執筆
+
+執筆指示と設定をもとに章の本文を執筆し、`output/ch_NN_draft.md` に保存する。
+
+- 冒頭に「第N章　章タイトル」を入れる
+- 目安: 3000〜5000文字
+- 三人称・過去形
+- 設定との整合性を必ず守る
+- **各キャラクターのセリフは `characters.md` の「口調・話し方」に従う**
+  - 執筆後、全セリフを通して読み直し、口調がブレていないか確認してから保存する
+  - 特に注意：丁寧語とタメ口の混在、一人称の揺れ
+
+### Step 4: 編集者としてレビュー
+
+草稿を以下の観点でレビューし、`output/ch_NN_review.md` に保存する：
+
+```markdown
+VERDICT: APPROVE または REVISE
+
+## 総評
+...
+
+## 良かった点
+...
+
+## 修正が必要な点（REVISE の場合）
+- 
+```
+
+判定基準:
+- 設定との整合性が取れているか
+- キャラクターの言動が一貫しているか
+- **口調の一貫性** — `characters.md` の口調設定と一致しているか。丁寧語とタメ口の混在、一人称のブレは必ず REVISE
+- 展開・テンポが適切か
+- 文章の質・読みやすさ
+
+**REVISE の場合**: Step 3 に戻り最大2回まで修正する（3回目は強制 APPROVE）
+
+### Step 5: 完成章を GitHub に push
+
+```bash
+# story/ ディレクトリに章ファイルを作成・更新
+gh api repos/w4serinn/story_writer/contents/story/ch_NN.md \
+  --method PUT \
+  --field message="story: 第N章 完成" \
+  --field content="$(base64 -i output/ch_NN_draft.md)"
+```
+
+既存ファイルの場合は sha が必要：
+```bash
+SHA=$(gh api repos/w4serinn/story_writer/contents/story/ch_NN.md --jq '.sha' 2>/dev/null || echo "")
+if [ -n "$SHA" ]; then
+  # --field sha="$SHA" を追加
+fi
+```
+
+### Step 6: 設定ファイルの更新内容を抽出・PR 作成
+
+#### 6-1. ファイルごとの更新ルール
+
+完成した章を読み、以下のルールに従って各ファイルへの追記内容を判断する：
+
+| ファイル | 追記するもの |
+|---------|-------------|
+| `characters.md` | 新登場キャラクターのプロフィール・外見・性格・能力／既存キャラの新たな特徴・関係性の変化 |
+| `sentient_weapon_system.md` | 新たに登場・判明したセンティエントウェポンの名前・属性・専用技／覚醒条件 |
+| `magic_system.md` | 新たに登場・使用された魔法・技の描写／属性の新たな特性や制約 |
+| `geography_and_ruins.md` | 新登場の地名・場所・遺跡の描写／既存の場所の追加情報・魔物の新情報 |
+| `school_system.md` | 学園のルール・制度・行事で新たに判明した情報 |
+
+#### 6-2. 判断に迷う場合はユーザーに確認する
+
+以下のケースでは**必ずユーザーに確認**してから進む：
+
+- どのファイルに書くべきか判断がつかない情報
+- 既存の設定と矛盾・衝突する可能性がある情報
+- 新しいファイルを作った方がよさそうな情報（例: `factions.md`, `timeline.md` など）
+- 更新量が多く、既存の記述を大きく書き換える必要がある場合
+
+確認の形式：
+```
+【設定更新の確認】
+以下の情報をどのファイルに追記すべきか判断できませんでした。
+
+情報: 〇〇〇
+候補: characters.md / 新規ファイル magic_items.md
+
+どちらに追記しますか？（または別の指示があればお知らせください）
+```
+
+#### 6-3. 更新内容が確定したら PR を作成
+
+```bash
+# ブランチ作成
+gh api repos/w4serinn/story_writer/git/refs \
+  --method POST \
+  --field ref="refs/heads/settings/ch-NN" \
+  --field sha="$(gh api repos/w4serinn/story_writer/git/refs/heads/main --jq '.object.sha')"
+
+# 更新ファイルをブランチにpush（ファイルごとに実行）
+gh api repos/w4serinn/story_writer/contents/[ファイル名] \
+  --method PUT \
+  --field message="docs(ch-NN): [更新内容の一言説明]" \
+  --field content="$(base64 -i [ローカルの更新済みファイル])" \
+  --field branch="settings/ch-NN" \
+  --field sha="[既存ファイルのSHA]"
+
+# PR作成（更新したファイルを本文に列挙）
+gh pr create \
+  --repo w4serinn/story_writer \
+  --title "[設定更新] 第N章" \
+  --body "## 第N章完成に伴う設定ファイル更新
+
+### 更新ファイル
+- characters.md: 〇〇を追記
+- geography_and_ruins.md: 〇〇を追記" \
+  --head "settings/ch-NN" \
+  --base main
+```
+
+更新すべき設定ファイルがない場合はこのステップをスキップしてよい。
+
+#### 6-4. PR作成後のフィードバックループ
+
+PRを作成したらURLをユーザーに提示し、以下の形式で返答を求める：
+
+```
+【設定更新PR を作成しました】
+URL: https://github.com/w4serinn/story_writer/pull/N
+
+内容:
+- characters.md: 〇〇を追記
+- geography_and_ruins.md: 〇〇を追記
+
+確認して以下のいずれかを入力してください：
+  - 「OK」または「merge」→ このままmergeしてください
+  - 「○○を修正して」→ 修正内容を伝えてください
+  - 「スキップ」→ 設定更新なしで次章へ進みます
+```
+
+**ユーザーが修正を求めた場合:**
+
+1. 指示された修正内容をローカルファイルに反映する
+2. 修正内容を同じブランチに追加push する
+3. 再度ユーザーに確認を求める（「OK」が出るまで繰り返す）
+
+```bash
+# 修正後、同じブランチに追加push（sha は最新のものを取得）
+SHA=$(gh api repos/w4serinn/story_writer/contents/[ファイル名]?ref=settings/ch-NN --jq '.sha')
+gh api repos/w4serinn/story_writer/contents/[ファイル名] \
+  --method PUT \
+  --field message="docs(ch-NN): [修正内容の一言説明]" \
+  --field content="$(base64 -i [修正済みローカルファイル])" \
+  --field branch="settings/ch-NN" \
+  --field sha="$SHA"
+```
+
+**「OK」が出たら:**
+
+mergeはユーザー自身がGitHub上で行う。
+「mergeしたらStep 7に進みます」と伝えてユーザーのmerge完了を待つ。
+
+### Step 7: 状態を保存・pushして完了を報告
+
+`output/story_state.json` を更新してリポジトリに push する：
+
+```bash
+git add output/
+git commit -m "progress: 第N章 完了"
+git push
+```
+
+```json
+{
+  "repo": "w4serinn/story_writer",
+  "last_completed_chapter": N,
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "status": "approved",
+      "title": "章タイトル",
+      "summary": "この章の内容を200文字以内で要約"
+    }
+  ]
+}
+```
+
+ユーザーに以下を報告する：
+- 完成した章のタイトルと文字数
+- 次章の指示を待っている旨
+
+---
+
+## 重要なルール
+
+1. **設定との整合性を最優先** — 魔法体系・属性特性・センティエントウェポンのルールは厳守
+2. **固有名詞の一貫性** — 一度決めたキャラ名・地名・技名は変えない
+3. **前章との連続性** — `story_state.json` の前章サマリーを必ず参照する
+4. **PR はフィードバックループを回す** — URL提示→修正対応→OK確認→merge待ち、の順で進める。「OK」なしに次章へ進まない
+5. **エラーが起きたら止まらず報告** — gh コマンドが失敗してもローカルファイルは保持する
